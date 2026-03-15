@@ -1,3 +1,18 @@
 .idea
 CLAUDE.md
 .venv
+*.pyc
+__pycache__/
+*.py[cod]
+
+# Runtime data directories
+lake/
+state/
+events/
+
+# Sentence-transformers model cache
+.cache/
+
+# Environment files
+.env
+.env.*

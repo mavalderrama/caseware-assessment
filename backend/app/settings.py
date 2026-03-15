@@ -20,17 +20,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = BASE_DIR.parent
 
 # Data directories
-STATE_DIR = Path(os.environ.get('STATE_DIR', str(REPO_ROOT / 'state')))
-LAKE_DIR = Path(os.environ.get('LAKE_DIR', str(REPO_ROOT / 'lake')))
-EVENTS_DIR = Path(os.environ.get('EVENTS_DIR', str(REPO_ROOT / 'events')))
+STATE_DIR = Path(os.environ.get("STATE_DIR", str(REPO_ROOT / "state")))
+LAKE_DIR = Path(os.environ.get("LAKE_DIR", str(REPO_ROOT / "lake")))
+EVENTS_DIR = Path(os.environ.get("EVENTS_DIR", str(REPO_ROOT / "events")))
 
 # Sentence-transformers embedding model
-EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 # AWS / LocalStack
-AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL', None)  # None = real AWS
-EVENTS_QUEUE_URL = os.environ.get('EVENTS_QUEUE_URL', '')
-LAKE_BUCKET = os.environ.get('LAKE_BUCKET', '')
+AWS_ENDPOINT_URL = os.environ.get("AWS_ENDPOINT_URL", None)  # None = real AWS
+EVENTS_QUEUE_URL = os.environ.get("EVENTS_QUEUE_URL", "")
+LAKE_BUCKET = os.environ.get("LAKE_BUCKET", "")
 
 
 # Quick-start development settings - unsuitable for production
@@ -38,76 +38,76 @@ LAKE_BUCKET = os.environ.get('LAKE_BUCKET', '')
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get(
-    'DJANGO_SECRET_KEY',
-    'django-insecure-3=2dj_3a53yla#pm_z+t9_a#mto-dl$6e35e7%rl@4%)$gn$&u',
+    "DJANGO_SECRET_KEY",
+    "django-insecure-3=2dj_3a53yla#pm_z+t9_a#mto-dl$6e35e7%rl@4%)$gn$&u",
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
+DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
 
 
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'app.ds',
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "app.ds",
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'app.urls'
+ROOT_URLCONF = "app.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'app.wsgi.application'
+WSGI_APPLICATION = "app.wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'datasearch'),
-        'USER': os.environ.get('DB_USER', 'datasearch'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'datasearch'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
-        'TEST': {
-            'NAME': os.environ.get('DB_TEST_NAME', 'test_datasearch'),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME", "datasearch"),
+        "USER": os.environ.get("DB_USER", "datasearch"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", "datasearch"),
+        "HOST": os.environ.get("DB_HOST", "localhost"),
+        "PORT": os.environ.get("DB_PORT", "5432"),
+        "TEST": {
+            "NAME": os.environ.get("DB_TEST_NAME", "test_datasearch"),
         },
     }
 }
 
-DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # Password validation
@@ -115,16 +115,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -132,9 +132,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "UTC"
 
 USE_I18N = True
 
@@ -144,4 +144,4 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
