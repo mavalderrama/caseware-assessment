@@ -3,69 +3,74 @@
 ## High-level diagram
 
 ```
-                    ┌─────────────────────────────────────────────────────────┐
-                    │  VPC (private subnets)                                  │
-                    │                                                         │
-  Internet ──► ALB ──► ECS Fargate (Django) ──► Aurora PostgreSQL Serverless │
-                    │        │                   (pgvector extension)         │
-                    │        │ writes                                         │
-                    │        ▼                                                │
-                    │   S3 Data Lake                                          │
-                    │   lake/{table}/date=YYYY-MM-DD/data.jsonl               │
-                    │        │                                                │
-                    │        │ trigger / catalog                              │
-                    │        ▼                                                │
-                    │   AWS Glue (crawler) ──► Glue Data Catalog              │
-                    │                              │                          │
-                    │                              ▼                          │
-                    │                         Amazon Athena (ad-hoc SQL)      │
-                    │                                                         │
-                    │        │ delta events                                   │
-                    │        ▼                                                │
-                    │   EventBridge (custom bus) ──► SQS + DLQ               │
-                    │                                                         │
-                    │        │ checkpoint                                     │
-                    │        ▼                                                │
-                    │   DynamoDB (checkpoint table)                           │
-                    │        key: table_name  value: updated_at cursor        │
-                    │                                                         │
-                    │        │ embeddings                                     │
-                    │        ▼                                                │
-                    │   OpenSearch Serverless (vector search)                 │
-                    │   ← Bedrock / SageMaker (embedding generation)          │
-                    └─────────────────────────────────────────────────────────┘
+                         ┌─────────────────────────────────────────────────────────────┐
+                         │  VPC                                                        │
+                         │                                                             │
+                         │  Public subnets                                             │
+  Internet ──► Route53   │  ┌──────────────────────────────────────┐                  │
+               (optional)│  │  ALB (HTTP :80 / HTTPS :443)         │                  │
+                    │    │  └──────────────┬───────────────────────┘                  │
+                    │    │                 │ port 8000                                 │
+                    │    │  Private subnets│                                           │
+                    │    │  ┌──────────────▼──────────────────────────────────────┐   │
+                    │    │  │  ECS Fargate (Django, FARGATE + FARGATE_SPOT)        │   │
+                    │    │  │  Auto-scales on CPU (target 70%)                     │   │
+                    │    │  │  Deployment circuit-breaker + rollback               │   │
+                    │    │  └──────┬──────────┬──────────┬──────────┬─────────────┘   │
+                    │    │         │           │          │          │                  │
+                    │    │  reads  │    writes │  writes  │ publishes│                  │
+                    │    │         ▼           ▼          ▼          ▼                  │
+                    │    │  ┌──────────┐ ┌─────────┐ ┌──────────┐ ┌──────────────┐   │
+                    │    │  │  Aurora  │ │  S3     │ │ DynamoDB │ │ EventBridge  │   │
+                    │    │  │ Postgres │ │ Data    │ │Checkpoint│ │ Custom Bus   │   │
+                    │    │  │Serverless│ │  Lake   │ │  Table   │ │(source:      │   │
+                    │    │  │   v2     │ │ (JSONL  │ │ (atomic  │ │datasearchpy  │   │
+                    │    │  │          │ │partition│ │ cursor)  │ │  .ingest)    │   │
+                    │    │  └──────────┘ │ed by    │ └──────────┘ └──────┬───────┘   │
+                    │    │               │ date)   │                      │            │
+                    │    │               └─────────┘           ┌──────────▼────────┐  │
+                    │    │                                      │  SQS + DLQ        │  │
+                    │    │                                      │  (KMS-encrypted,  │  │
+                    │    │                                      │  3 retries, 1h)   │  │
+                    │    │                                      └───────────────────┘  │
+                    │    │                                                             │
+                    │    │  ┌──────────────────────────────────────────────────────┐  │
+                    │    │  │  OpenSearch Serverless (VECTORSEARCH collection)      │  │
+                    │    │  │  VPC endpoint — reachable only from ECS SG           │  │
+                    │    │  └──────────────────────────────────────────────────────┘  │
+                    │    └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Service choices
 
 | Concern | Service | Reason |
 |---|---|---|
-| **Postgres** | Aurora PostgreSQL Serverless v2 | Auto-scales to zero when idle; supports pgvector; IAM auth; cluster endpoint for HA |
-| **Compute** | ECS Fargate | No server management; per-request scaling; integrates with ALB and Secrets Manager |
-| **Data lake** | S3 + Glue crawler + Athena | S3 for durable JSONL storage; Glue auto-catalogs partitions; Athena for ad-hoc SQL without ETL |
-| **Checkpoint / state** | DynamoDB | Single-item conditional writes for atomic checkpoint advancement; PAY_PER_REQUEST; global tables for multi-region |
-| **Eventing** | EventBridge → SQS + DLQ | EventBridge for routing/filtering; SQS for reliable delivery; DLQ captures unprocessable messages for replay |
-| **Vector search** | OpenSearch Serverless (k-NN) | Managed, no cluster ops; natively supports 384-dim vectors; scales with query volume |
-| **Embeddings** | Amazon Bedrock (Titan Embeddings) or SageMaker endpoint | Managed inference; no model serving infrastructure; Bedrock requires no provisioning |
+| **Postgres (source)** | Aurora PostgreSQL Serverless v2 | Scales 0.5–16 ACU; storage encrypted; enhanced monitoring + Performance Insights; credentials in Secrets Manager |
+| **Compute** | ECS Fargate + FARGATE_SPOT | No server management; SPOT reduces cost; ALB integration; CPU auto-scaling; deployment circuit-breaker with rollback |
+| **Data lake** | S3 (SSE-S3, versioning, lifecycle IA→Glacier) | Durable JSONL storage; same-day partition key makes PUTs idempotent; lifecycle tiers reduce cost over time |
+| **Checkpoint / state** | DynamoDB (PAY_PER_REQUEST, PITR, encrypted) | Single-item conditional writes for atomic checkpoint advancement; point-in-time recovery for audit |
+| **Eventing** | EventBridge custom bus → SQS + DLQ (KMS) | EventBridge filters on `source: datasearchpy.ingest`; SQS gives durable buffering; DLQ captures after 3 retries |
+| **Vector search** | OpenSearch Serverless (VECTORSEARCH, VPC endpoint) | Managed, no cluster ops; scales with query volume; VPC endpoint keeps traffic private; task-role data-access policy |
+| **Embeddings** | Amazon Bedrock (Titan Embeddings v2) or SageMaker | Managed inference for production; current implementation uses hash-based scoring — swap embedding function only |
 
 ## Idempotency strategy
 
-- **Ingest**: checkpoint is a strict `updated_at__gt` cursor stored atomically in DynamoDB via conditional write (`attribute_not_exists` or version check). Re-running produces the same S3 object keys (same day partition → same path); S3 PUT is idempotent.
-- **Events**: each event carries a `run_id`; consumers deduplicate by `run_id` + `table` using a DynamoDB idempotency table or SQS message deduplication ID (FIFO queue).
-- **Search index rebuild**: re-reading all S3 partitions and re-indexing into OpenSearch with `_id = case_id` is idempotent (upsert).
+- **Ingest**: checkpoint is an `updated_at__gt` cursor stored atomically in DynamoDB. Re-running with no DB changes writes to the same S3 key (`lake/{table}/date=YYYY-MM-DD/data.jsonl`) — S3 PUT is idempotent. Dry-run mode (`?dry_run=true`) skips all writes.
+- **Events**: each event carries a `run_id`; EventBridge source filter (`datasearchpy.ingest`) prevents spurious routing; SQS consumers deduplicate by `run_id + table`.
+- **Search index rebuild**: re-indexing from S3 into OpenSearch using `_id = case_id` is an idempotent upsert.
 
 ## Failure handling
 
-- **ECS task crash during lake write**: S3 multipart uploads with abort-on-failure; checkpoint is only written to DynamoDB *after* all S3 puts succeed.
-- **SQS consumer failure**: messages stay in queue up to visibility timeout; after `maxReceiveCount` retries they move to the DLQ for manual inspection / replay.
-- **OpenSearch indexing failure**: logged to CloudWatch; a separate reconciliation job can re-index from S3 on demand.
-- **Aurora failover**: Aurora Serverless v2 promotes a reader within ~30 s; ECS task retries DB connection with exponential back-off.
+- **ECS task crash during lake write**: checkpoint advances only *after* all S3 PUTs succeed; partial writes are overwritten on retry.
+- **SQS consumer failure**: messages remain in-flight up to the visibility timeout; after 3 receive attempts they move to the DLQ for inspection / manual replay. EventBridge also retries delivery for up to 1 hour.
+- **OpenSearch indexing failure**: logged to CloudWatch; a reconciliation run re-indexes from S3 on demand (`_id`-keyed upserts are safe to replay).
+- **Aurora failover**: Serverless v2 promotes a reader in ~30 s; ECS task retries with exponential back-off.
+- **ECS bad deploy**: deployment circuit-breaker detects unhealthy task startup and auto-rolls back to the previous task definition.
 
 ## Security / ops basics
 
-- **IAM**: task role grants least-privilege (S3 prefix, specific DynamoDB table, SQS queue ARN only). No wildcard `*` resources.
-- **Secrets**: DB credentials injected via Secrets Manager; never in environment variables or source code.
-- **Encryption**: S3 SSE-S3 (or SSE-KMS for stricter compliance); DynamoDB encryption at rest; SQS KMS; RDS storage encrypted; OpenSearch encryption policy.
-- **Network**: ECS tasks in private subnets; ALB in public subnets; RDS and OpenSearch only reachable from ECS security group.
-- **Observability**: CloudWatch Logs (ECS), CloudWatch Metrics + alarms (CPU, ALB 5xx, DLQ depth), X-Ray tracing for request latency.
-- **Audit**: CloudTrail for all API calls; S3 access logging; DynamoDB streams for checkpoint history.
+- **IAM**: task role grants least-privilege — specific S3 prefix, DynamoDB table ARN, SQS queue ARN, EventBridge bus ARN only; no wildcard `*` resources.
+- **Secrets**: DB credentials stored in Secrets Manager; injected at runtime via `secrets` block in task definition — never in env vars or source code.
+- **Encryption**: S3 SSE-S3; DynamoDB encryption at rest; SQS + DLQ with dedicated KMS key (auto-rotated); Aurora storage encrypted; OpenSearch AWS-owned key encryption policy.
+- **Network**: ECS tasks in private subnets (NAT for egress); ALB in public subnets; Aurora port 5432 reachable only from ECS SG; OpenSearch VPCE reachable only from ECS SG.
+- **Observability**: CloudWatch Logs (ECS, 30-day retention); CloudWatch alarms on ECS CPU > 80% and ALB 5xx count > 10; Aurora enhanced monitoring (60 s) + Performance Insights (7-day); DynamoDB PITR for checkpoint audit trail.
