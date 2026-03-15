@@ -7,7 +7,7 @@ from ..use_cases.search import SearchUseCase
 from .checkpoint import FileCheckpointStore
 from .event_emitter import FileAndSqsEventEmitter
 from .lake_writer import LakeWriter
-from .search_index import InMemorySearchIndex
+from .search_index import PgvectorSearchIndex
 
 
 class Container:
@@ -17,7 +17,7 @@ class Container:
         self,
         ingest_use_case: IngestUseCase,
         search_use_case: SearchUseCase,
-        search_index: InMemorySearchIndex,
+        search_index: PgvectorSearchIndex,
     ) -> None:
         self.ingest_use_case = ingest_use_case
         self.search_use_case = search_use_case
@@ -50,7 +50,7 @@ class Container:
             sqs_client=sqs_client,
         )
 
-        search_index = InMemorySearchIndex(
+        search_index = PgvectorSearchIndex(
             model_name=getattr(settings, "EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
         )
 

@@ -8,11 +8,11 @@ from typing import Any
 from ..domain.entities import SearchResult
 
 
-class InMemorySearchIndex:
+class PgvectorSearchIndex:
     """
-    In-memory search index backed by SentenceTransformer embeddings.
+    Search index backed by pgvector in Postgres.
 
-    Thread-safe: index rebuilds and searches share an RLock.
+    Embeddings are stored in Case.embedding (VectorField(384)).
     Model loading uses a class-level double-checked lock to load once per process.
     """
 
@@ -21,9 +21,6 @@ class InMemorySearchIndex:
 
     def __init__(self, model_name: str) -> None:
         self._model_name = model_name
-        # entries: list of (case_id, title, status, embedding_ndarray)
-        self._entries: list[tuple[int, str, str, Any]] = []
-        self._lock = threading.RLock()
 
     @classmethod
     def _get_model(cls, model_name: str) -> Any:
@@ -52,11 +49,11 @@ class InMemorySearchIndex:
         self.rebuild_from_lake_rows(list(rows_by_id.values()))
 
     def rebuild_from_lake_rows(self, rows: list[dict]) -> None:
-        """Encode rows and replace the entire index atomically."""
+        """Encode rows and bulk-update Case.embedding in Postgres."""
         if not rows:
-            with self._lock:
-                self._entries = []
             return
+
+        from ..adapters.models import Case as CaseModel
 
         model = self._get_model(self._model_name)
         texts = [
@@ -64,34 +61,31 @@ class InMemorySearchIndex:
             for r in rows
         ]
         embeddings = model.encode(texts, normalize_embeddings=True)
-        entries = [
-            (r["id"], r.get("title", ""), r.get("status", ""), emb)
-            for r, emb in zip(rows, embeddings)
-        ]
-        with self._lock:
-            self._entries = entries
+        cases = [CaseModel(id=r["id"]) for r in rows]
+        for case, emb in zip(cases, embeddings):
+            case.embedding = emb.tolist()
+        CaseModel.objects.bulk_update(cases, ["embedding"])
 
     def search(self, query: str, top_k: int) -> list[SearchResult]:
-        """Cosine similarity via dot product on L2-normalised vectors. Stable sort: (-score, case_id)."""
-        import numpy as np
+        """Cosine similarity via pgvector. Tie-break by id for determinism."""
+        from pgvector.django import CosineDistance
+
+        from ..adapters.models import Case as CaseModel
 
         model = self._get_model(self._model_name)
         query_vec = model.encode([query], normalize_embeddings=True)[0]
 
-        with self._lock:
-            entries = list(self._entries)
-
-        if not entries:
-            return []
-
-        matrix = np.stack([e[3] for e in entries])
-        scores = matrix @ query_vec  # shape (n,)
-
-        scored = [
-            (entries[i][0], float(scores[i]), entries[i][1], entries[i][2])
-            for i in range(len(entries))
-        ]
-        scored.sort(key=lambda x: (-x[1], x[0]))
+        qs = (
+            CaseModel.objects.filter(embedding__isnull=False)
+            .annotate(distance=CosineDistance("embedding", query_vec.tolist()))
+            .order_by("distance", "id")[:top_k]
+        )
         return [
-            SearchResult(case_id=s[0], score=s[1], title=s[2], status=s[3]) for s in scored[:top_k]
+            SearchResult(
+                case_id=c.id,
+                score=float(1.0 - c.distance),
+                title=c.title,
+                status=c.status,
+            )
+            for c in qs
         ]

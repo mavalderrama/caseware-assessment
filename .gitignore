@@ -16,3 +16,4 @@ events/
 # Environment files
 .env
 .env.*
+datasearchpy.iml
