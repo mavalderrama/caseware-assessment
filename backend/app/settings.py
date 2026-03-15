@@ -10,22 +10,42 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Repo root (datasearchpy/)
+REPO_ROOT = BASE_DIR.parent
+
+# Data directories
+STATE_DIR = Path(os.environ.get('STATE_DIR', str(REPO_ROOT / 'state')))
+LAKE_DIR = Path(os.environ.get('LAKE_DIR', str(REPO_ROOT / 'lake')))
+EVENTS_DIR = Path(os.environ.get('EVENTS_DIR', str(REPO_ROOT / 'events')))
+
+# Sentence-transformers embedding model
+EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
+
+# AWS / LocalStack
+AWS_ENDPOINT_URL = os.environ.get('AWS_ENDPOINT_URL', None)  # None = real AWS
+EVENTS_QUEUE_URL = os.environ.get('EVENTS_QUEUE_URL', '')
+LAKE_BUCKET = os.environ.get('LAKE_BUCKET', '')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-3=2dj_3a53yla#pm_z+t9_a#mto-dl$6e35e7%rl@4%)$gn$&u'
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-3=2dj_3a53yla#pm_z+t9_a#mto-dl$6e35e7%rl@4%)$gn$&u',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
 
 # Application definition
@@ -37,7 +57,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'backend.app.ds',
+    'app.ds',
 ]
 
 MIDDLEWARE = [
@@ -75,10 +95,19 @@ WSGI_APPLICATION = 'app.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME', 'datasearch'),
+        'USER': os.environ.get('DB_USER', 'datasearch'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'datasearch'),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
+        'TEST': {
+            'NAME': os.environ.get('DB_TEST_NAME', 'test_datasearch'),
+        },
     }
 }
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 # Password validation

@@ -1,0 +1,100 @@
+services:
+
+  # ── PostgreSQL with pgvector ───────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: datasearch
+      POSTGRES_USER: datasearch
+      POSTGRES_PASSWORD: datasearch
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datasearch -d datasearch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # ── LocalStack (SQS + S3) ─────────────────────────────────────────────────
+  localstack:
+    image: localstack/localstack:latest
+    environment:
+      SERVICES: sqs,s3
+      DEFAULT_REGION: us-east-1
+      LOCALSTACK_HOST: localstack:4566
+      DEBUG: "0"
+      PERSISTENCE: "1"
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./infra/docker/localstack-init.sh:/etc/localstack/init/ready.d/01-init.sh
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── Django application ────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DJANGO_SETTINGS_MODULE: app.settings
+      DJANGO_DEBUG: "true"
+
+      # Postgres
+      DB_HOST: db
+      DB_NAME: datasearch
+      DB_USER: datasearch
+      DB_PASSWORD: datasearch
+      DB_PORT: "5432"
+
+      # AWS / LocalStack
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
+      EVENTS_QUEUE_URL: http://localstack:4566/000000000000/datasearchpy-events
+      LAKE_BUCKET: datasearchpy-lake
+
+      # Data directories (bind-mounted)
+      STATE_DIR: /app/state
+      LAKE_DIR: /app/lake
+      EVENTS_DIR: /app/events
+
+      # Sentence-transformers model cache
+      SENTENCE_TRANSFORMERS_HOME: /app/models
+      TRANSFORMERS_OFFLINE: "0"
+
+      # Embedding model
+      EMBEDDING_MODEL: all-MiniLM-L6-v2
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./state:/app/state
+      - ./lake:/app/lake
+      - ./events:/app/events
+      - model_cache:/app/models
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  localstack_data:
+  model_cache:        # persists the ~90 MB all-MiniLM-L6-v2 download across restarts
