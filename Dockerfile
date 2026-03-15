@@ -13,9 +13,11 @@ RUN pip install --no-cache-dir uv
 # Copy dependency files first for layer caching
 COPY backend/pyproject.toml backend/uv.lock ./
 
-# Install production dependencies pinned by the lockfile
-ENV UV_SYSTEM_PYTHON=1
-RUN uv sync --no-dev --frozen
+# Create a venv and install production dependencies pinned by the lockfile
+RUN uv venv /app/.venv
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:$PATH"
+RUN uv sync --no-dev --frozen --no-install-project
 
 # Copy application source
 COPY backend/ .
