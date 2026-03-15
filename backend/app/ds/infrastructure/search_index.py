@@ -53,7 +53,7 @@ class PgvectorSearchIndex:
         if not rows:
             return
 
-        from ..adapters.models import Case as CaseModel
+        from ..infrastructure.models import Case as CaseModel
 
         model = self._get_model(self._model_name)
         texts = [
@@ -70,7 +70,7 @@ class PgvectorSearchIndex:
         """Cosine similarity via pgvector. Tie-break by id for determinism."""
         from pgvector.django import CosineDistance
 
-        from ..adapters.models import Case as CaseModel
+        from ..infrastructure.models import Case as CaseModel
 
         model = self._get_model(self._model_name)
         query_vec = model.encode([query], normalize_embeddings=True)[0]

@@ -20,4 +20,4 @@ class LakeWriter:
         with open(out_path, "w") as f:
             for row in rows:
                 f.write(json.dumps(row, default=str) + "\n")
-        return [str(out_path)]
+        return [str(out_path.relative_to(self._lake_dir.parent))]
