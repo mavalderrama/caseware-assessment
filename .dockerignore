@@ -1,0 +1,10 @@
+.git/
+backend/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+state/
+lake/
+events/
+infra/
+*.md

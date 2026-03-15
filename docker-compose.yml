@@ -2,7 +2,7 @@ services:
 
   # ── PostgreSQL with pgvector ───────────────────────────────────────────────
   db:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18-trixie
     environment:
       POSTGRES_DB: datasearch
       POSTGRES_USER: datasearch
@@ -33,7 +33,6 @@ services:
     volumes:
       - localstack_data:/var/lib/localstack
       - ./infra/docker/localstack-init.sh:/etc/localstack/init/ready.d/01-init.sh
-      - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
       interval: 10s

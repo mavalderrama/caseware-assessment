@@ -1,8 +1,7 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
-# System deps: libpq for psycopg, curl for healthchecks
+# curl is used for container health checks
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -12,12 +11,15 @@ WORKDIR /app
 RUN pip install --no-cache-dir uv
 
 # Copy dependency files first for layer caching
-COPY backend/pyproject.toml backend/uv.lock* ./
+COPY backend/pyproject.toml backend/uv.lock ./
 
-# Install production dependencies (no dev group)
-RUN uv pip install --system --no-cache -r pyproject.toml
+# Install production dependencies pinned by the lockfile
+ENV UV_SYSTEM_PYTHON=1
+RUN uv sync --no-dev --frozen
 
 # Copy application source
 COPY backend/ .
 
 EXPOSE 8000
+
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
