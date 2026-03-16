@@ -11,7 +11,7 @@ from django.views.decorators.http import require_http_methods
 @csrf_exempt
 @require_http_methods(["POST"])
 def ingest(request):
-    container = apps.get_app_config("ds")._container
+    container = apps.get_app_config("ds")._container  # type: ignore[attr-defined]
     dry_run = request.GET.get("dry_run", "false").lower() == "true"
     try:
         manifest = container.ingest_use_case.execute(dry_run=dry_run)

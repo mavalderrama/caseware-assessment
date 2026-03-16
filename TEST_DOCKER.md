@@ -21,12 +21,13 @@ docker compose up --build
 | LocalStack starts, init script creates SQS queues + S3 bucket | `localstack` | ~15–20 s |
 | Django image builds + deps installed | `web` | ~3–5 min (PyTorch/sentence-transformers) |
 | `all-MiniLM-L6-v2` model downloads (~90 MB, cached to `model_cache` volume) | `web` | ~30 s (first run only) |
-| `manage.py migrate` runs | `web` | ~5 s |
+| `manage.py migrate` runs, gunicorn starts | `web` | ~5 s |
 
 Wait until you see:
 
 ```
-web-1  | Starting development server at http://0.0.0.0:8000/
+web-1  | [INFO] Listening at: http://0.0.0.0:8000
+web-1  | [INFO] Worker booted (pid: ...)
 ```
 
 To run detached:
@@ -47,7 +48,6 @@ docker compose ps
 Expected: all three services show `healthy` or `running`.
 
 ```bash
-# Django health endpoint
 curl -s http://localhost:8000/health/ | python3 -m json.tool
 ```
 
@@ -59,29 +59,21 @@ Expected:
 
 ---
 
-## 3. Seed the database
+## 3. Seed the database — Batch 1 (baseline)
 
-The database starts empty. Insert rows so ingest has data to pick up.
+Use the built-in seed endpoint to insert sample data. Batch 1 loads 5 customers and 15 cases covering a range of statuses and topics.
 
 ```bash
-docker compose exec db psql -U datasearch -d datasearch -c "
-INSERT INTO customers (name, email, updated_at, created_at)
-VALUES
-  ('Alice',   'alice@example.com',   now(), now()),
-  ('Bob',     'bob@example.com',     now(), now()),
-  ('Charlie', 'charlie@example.com', now(), now())
-ON CONFLICT (email) DO NOTHING;
+curl -s -X POST http://localhost:8000/seed | python3 -m json.tool
+```
 
-INSERT INTO cases (customer_id, title, description, status, updated_at, created_at)
-VALUES
-  (1, 'Login broken',          'Cannot log in after password reset',   'open',     now(), now()),
-  (1, 'Invoice missing',       'Invoice #1042 not in billing portal',  'closed',   now(), now()),
-  (2, 'Slow dashboard',        'Dashboard takes 30s to load',          'open',     now(), now()),
-  (2, 'Wrong timezone',        'Timestamps show UTC instead of EST',   'resolved', now(), now()),
-  (3, 'Export CSV fails',      'CSV export returns 500 error',         'open',     now(), now()),
-  (3, 'Missing notification',  'Email alerts not sent on ticket close','open',     now(), now())
-ON CONFLICT DO NOTHING;
-"
+Expected:
+
+```json
+{
+  "customers": {"created": 5, "updated": 0},
+  "cases":     {"created": 15, "updated": 0}
+}
 ```
 
 ---
@@ -99,14 +91,14 @@ Expected response shape:
 ```json
 {
   "run_id": "a1b2c3d4-...",
-  "started_at": "2026-03-15T10:00:00.000000",
-  "finished_at": "2026-03-15T10:00:01.234567",
+  "started_at": "2026-03-15T10:00:00.000000+00:00",
+  "finished_at": "2026-03-15T10:00:01.234567+00:00",
   "dry_run": false,
-  "checkpoint_before": {"customers": "1970-01-01T00:00:00", "cases": "1970-01-01T00:00:00"},
-  "checkpoint_after":  {"customers": "2026-03-15T10:00:00.123456", "cases": "2026-03-15T10:00:00.654321"},
+  "checkpoint_before": {"customers": "1970-01-01T00:00:00+00:00", "cases": "1970-01-01T00:00:00+00:00"},
+  "checkpoint_after":  {"customers": "2026-03-15T10:00:00.123456+00:00", "cases": "2026-03-15T10:00:00.654321+00:00"},
   "tables": {
-    "customers": {"row_count": 3, "lake_paths": ["lake/customers/date=2026-03-15/data.jsonl"], "schema_fingerprint": "..."},
-    "cases":     {"row_count": 6, "lake_paths": ["lake/cases/date=2026-03-15/data.jsonl"],     "schema_fingerprint": "..."}
+    "customers": {"row_count": 5,  "lake_paths": ["lake/customers/date=2026-03-15/data.jsonl"], "schema_fingerprint": "..."},
+    "cases":     {"row_count": 15, "lake_paths": ["lake/cases/date=2026-03-15/data.jsonl"],     "schema_fingerprint": "..."}
   }
 }
 ```
@@ -151,26 +143,36 @@ curl -s -X POST "http://localhost:8000/ingest?dry_run=true" | python3 -m json.to
 
 Expected: `"dry_run": true`; `checkpoint_after` equals `checkpoint_before` (no advancement); no changes to `state/checkpoint.json` or `events/events.jsonl`.
 
-### 4d. Ingest incremental update
+### 4d. Ingest incremental update — Batch 2
 
-Insert one new case and re-ingest:
+Seed the second batch of sample data (3 new customers, 9 new cases — all with fresh `updated_at` timestamps):
 
 ```bash
-docker compose exec db psql -U datasearch -d datasearch -c "
-INSERT INTO cases (customer_id, title, description, status, updated_at, created_at)
-VALUES (1, 'New urgent issue', 'Production is down', 'open', now(), now());
-"
+curl -s -X POST "http://localhost:8000/seed?batch=2" | python3 -m json.tool
+```
 
+Expected:
+
+```json
+{
+  "customers": {"created": 3, "updated": 0},
+  "cases":     {"created": 9, "updated": 0}
+}
+```
+
+Now ingest the delta:
+
+```bash
 curl -s -X POST http://localhost:8000/ingest | python3 -m json.tool
 ```
 
-Expected: `cases.row_count` is `1`; `customers.row_count` is `0` (no customers changed).
+Expected: `customers.row_count` is `3`; `cases.row_count` is `9`. The checkpoint advances to the batch-2 timestamps. A new or overwritten lake file is written for today's date.
 
 ---
 
 ## 5. POST /search
 
-Requires at least one successful ingest first (index is built from the lake on startup and refreshed after each ingest).
+Requires at least one successful ingest (index is built from the lake on startup and refreshed after each ingest).
 
 ```bash
 curl -s -X POST http://localhost:8000/search \
@@ -183,8 +185,7 @@ Expected response (ordered by score descending, deterministic):
 
 ```json
 [
-  {"case_id": 1, "score": 0.843, "title": "Login broken",   "status": "open"},
-  {"case_id": 3, "score": 0.512, "title": "Slow dashboard", "status": "open"},
+  {"case_id": 1, "score": 0.843, "title": "Login broken after password reset", "status": "open"},
   ...
 ]
 ```
@@ -221,30 +222,127 @@ curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000/search \
 
 ---
 
-## 6. Verify LocalStack resources
+## 6. Test SQS and S3 (LocalStack)
+
+### 6a. Verify LocalStack resources were created
 
 ```bash
-# List S3 lake bucket contents
-docker compose exec localstack awslocal s3 ls s3://datasearchpy-lake --recursive
+# List SQS queues
+docker compose exec localstack awslocal sqs list-queues
 
-# Check SQS for delta event messages
+# List S3 buckets
+docker compose exec localstack awslocal s3 ls
+```
+
+Expected queues: `datasearchpy-events` and `datasearchpy-events-dlq`.
+Expected bucket: `datasearchpy-lake`.
+
+### 6b. SQS — delta events
+
+The app publishes one SQS message per table after each successful ingest. Run a seed + ingest first if you haven't already:
+
+```bash
+curl -s -X POST http://localhost:8000/seed | python3 -m json.tool
+curl -s -X POST http://localhost:8000/ingest | python3 -m json.tool
+```
+
+Read the messages from the queue:
+
+```bash
 docker compose exec localstack awslocal sqs receive-message \
   --queue-url http://localhost:4566/000000000000/datasearchpy-events \
   --max-number-of-messages 10 \
   | python3 -m json.tool
 ```
 
-Each SQS message body contains the same delta event shape as `events/events.jsonl`.
+Expected: two messages (one per table). Each `MessageBody` is a JSON string matching the delta event shape:
+
+```json
+{
+  "table": "cases",
+  "run_id": "...",
+  "schema_fingerprint": "...",
+  "delta_row_count": 15,
+  "lake_paths": ["lake/cases/date=2026-03-16/data.jsonl"],
+  "checkpoint_after": "2026-03-16T..."
+}
+```
+
+To parse a message body inline:
+
+```bash
+docker compose exec localstack awslocal sqs receive-message \
+  --queue-url http://localhost:4566/000000000000/datasearchpy-events \
+  --max-number-of-messages 1 \
+  | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for msg in data.get('Messages', []):
+    print(json.dumps(json.loads(msg['MessageBody']), indent=2))
+"
+```
+
+**Verify the DLQ is empty** (messages only land here after 3 failed processing attempts):
+
+```bash
+docker compose exec localstack awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/datasearchpy-events-dlq \
+  --attribute-names ApproximateNumberOfMessages
+```
+
+Expected: `"ApproximateNumberOfMessages": "0"`.
+
+**Check queue depth** (how many unprocessed messages are waiting):
+
+```bash
+docker compose exec localstack awslocal sqs get-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/datasearchpy-events \
+  --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible
+```
+
+> Note: `receive-message` makes messages invisible for 300 s (the `VisibilityTimeout`). If you call it multiple times without deleting messages, subsequent calls may return empty until the timeout expires. To reset, purge the queue:
+>
+> ```bash
+> docker compose exec localstack awslocal sqs purge-queue \
+>   --queue-url http://localhost:4566/000000000000/datasearchpy-events
+> ```
+
+### 6c. S3 — lake bucket
+
+The `datasearchpy-lake` bucket is provisioned and versioning is enabled, but the current app writes the lake to the local bind-mounted directory (`./lake/`) rather than uploading to S3. The bucket is ready for a future S3-backed lake implementation.
+
+Verify the bucket and its versioning config:
+
+```bash
+# Confirm bucket exists
+docker compose exec localstack awslocal s3 ls
+
+# Confirm versioning is enabled
+docker compose exec localstack awslocal s3api get-bucket-versioning \
+  --bucket datasearchpy-lake
+```
+
+Expected versioning output: `{"Status": "Enabled"}`.
+
+To manually upload the local lake files and verify round-trip:
+
+```bash
+# Upload today's lake files
+docker compose exec localstack awslocal s3 sync /app/lake s3://datasearchpy-lake/lake
+
+# List what was uploaded
+docker compose exec localstack awslocal s3 ls s3://datasearchpy-lake/lake --recursive
+```
 
 ---
 
 ## 7. Run the automated test suite
 
 ```bash
-docker compose exec web python manage.py test app.ds
+docker compose exec web pytest
 ```
 
-Tests cover checkpoint correctness (advance only on success, idempotency) and search determinism.
+Tests cover checkpoint correctness, idempotency, delta event shape, manifest completeness, lake writer, checkpoint store, and event emitter.
 
 ---
 

@@ -88,16 +88,19 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
-    command: >
-      sh -c "python manage.py migrate &&
-             gunicorn app.wsgi:application
-             --bind 0.0.0.0:8000
-             --workers 2
-             --threads 2
-             --timeout 120
-             --preload
-             --access-logfile -
-             --error-logfile -"
+    command:
+      - sh
+      - -c
+      - >-
+        python manage.py migrate &&
+        gunicorn app.wsgi:application
+        --bind 0.0.0.0:8000
+        --workers 2
+        --threads 2
+        --timeout 120
+        --preload
+        --access-logfile -
+        --error-logfile -
     restart: unless-stopped
 
 volumes:

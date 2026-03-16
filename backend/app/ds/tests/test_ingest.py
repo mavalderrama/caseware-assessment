@@ -32,7 +32,9 @@ def _make_customer(id: int, updated_at: str = TS1) -> Customer:
         "email": f"c{id}@example.com",
         "updated_at": updated_at,
     }
-    return Customer(id=id, name=raw["name"], email=raw["email"], updated_at=updated_at, raw=raw)
+    return Customer(
+        id=id, name=f"Customer {id}", email=f"c{id}@example.com", updated_at=updated_at, raw=raw
+    )
 
 
 def _make_case(id: int, updated_at: str = TS1) -> Case:
@@ -47,7 +49,7 @@ def _make_case(id: int, updated_at: str = TS1) -> Case:
     return Case(
         id=id,
         customer_id=1,
-        title=raw["title"],
+        title=f"Case {id}",
         description="",
         status="open",
         updated_at=updated_at,
@@ -167,6 +169,7 @@ class TestCheckpointAdvancesOnSuccess(SimpleTestCase):
         manifest = uc.execute(dry_run=False)
 
         self.assertEqual(cp.save_called, 1)
+        assert cp.saved is not None
         self.assertEqual(cp.saved["customers"], TS2)
         self.assertEqual(cp.saved["cases"], TS1)
         self.assertEqual(manifest.checkpoint_after["customers"], TS2)
@@ -206,6 +209,7 @@ class TestCheckpointAdvancesOnSuccess(SimpleTestCase):
         uc.execute(dry_run=False)
 
         self.assertEqual(cp.save_called, 1)
+        assert cp.saved is not None
         self.assertEqual(cp.saved["customers"], TS1)
         self.assertEqual(cp.saved["cases"], TS1)
 

@@ -64,7 +64,7 @@ class PgvectorSearchIndex:
         cases = [CaseModel(id=r["id"]) for r in rows]
         for case, emb in zip(cases, embeddings):
             case.embedding = emb.tolist()
-        CaseModel.objects.bulk_update(cases, ["embedding"])
+        CaseModel.objects.bulk_update(cases, ["embedding"])  # type: ignore[attr-defined]
 
     def search(self, query: str, top_k: int) -> list[SearchResult]:
         """Cosine similarity via pgvector. Tie-break by id for determinism."""
@@ -76,7 +76,7 @@ class PgvectorSearchIndex:
         query_vec = model.encode([query], normalize_embeddings=True)[0]
 
         qs = (
-            CaseModel.objects.filter(embedding__isnull=False)
+            CaseModel.objects.filter(embedding__isnull=False)  # type: ignore[attr-defined]
             .annotate(distance=CosineDistance("embedding", query_vec.tolist()))
             .order_by("distance", "id")[:top_k]
         )

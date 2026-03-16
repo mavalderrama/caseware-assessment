@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods
 @csrf_exempt
 @require_http_methods(["POST"])
 def search(request):
-    container = apps.get_app_config("ds")._container
+    container = apps.get_app_config("ds")._container  # type: ignore[attr-defined]
     try:
         body = json.loads(request.body)
     except (json.JSONDecodeError, ValueError) as exc:

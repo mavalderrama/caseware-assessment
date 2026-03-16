@@ -55,13 +55,9 @@ class IngestUseCase:
 
         # Advance checkpoint cursors to the max updated_at seen
         new_customer_cursor = (
-            max(c.updated_at for c in customers)
-            if customers
-            else checkpoint_before.get("customers")
+            max(c.updated_at for c in customers) if customers else checkpoint_before["customers"]
         )
-        new_case_cursor = (
-            max(c.updated_at for c in cases) if cases else checkpoint_before.get("cases")
-        )
+        new_case_cursor = max(c.updated_at for c in cases) if cases else checkpoint_before["cases"]
         checkpoint_after = {
             "customers": new_customer_cursor,
             "cases": new_case_cursor,

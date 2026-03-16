@@ -11,7 +11,7 @@ class DjangoCaseRepository:
         from ...infrastructure.models import Case as CaseModel
 
         cursor_dt = datetime.fromisoformat(since)
-        qs = CaseModel.objects.filter(updated_at__gt=cursor_dt).order_by("updated_at")
+        qs = CaseModel.objects.filter(updated_at__gt=cursor_dt).order_by("updated_at")  # type: ignore[attr-defined]
         results: list[Case] = []
         for obj in qs:
             raw = {

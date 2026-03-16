@@ -15,8 +15,20 @@ from django.test import SimpleTestCase
 
 from app.ds.infrastructure.event_emitter import FileAndSqsEventEmitter
 
-EVENT_A = {"table": "cases", "run_id": "abc-123", "delta_row_count": 3, "lake_paths": ["lake/cases/date=2024-01-15/data.jsonl"], "checkpoint_after": "2024-01-15T10:00:00+00:00"}
-EVENT_B = {"table": "customers", "run_id": "abc-123", "delta_row_count": 1, "lake_paths": ["lake/customers/date=2024-01-15/data.jsonl"], "checkpoint_after": "2024-01-15T10:00:00+00:00"}
+EVENT_A = {
+    "table": "cases",
+    "run_id": "abc-123",
+    "delta_row_count": 3,
+    "lake_paths": ["lake/cases/date=2024-01-15/data.jsonl"],
+    "checkpoint_after": "2024-01-15T10:00:00+00:00",
+}
+EVENT_B = {
+    "table": "customers",
+    "run_id": "abc-123",
+    "delta_row_count": 1,
+    "lake_paths": ["lake/customers/date=2024-01-15/data.jsonl"],
+    "checkpoint_after": "2024-01-15T10:00:00+00:00",
+}
 
 
 class TestFileEventEmitter(SimpleTestCase):
@@ -50,7 +62,11 @@ class TestFileEventEmitter(SimpleTestCase):
             e = self._emitter(tmp)
             e.emit(EVENT_A)
             e.emit(EVENT_B)
-            lines = [l for l in (Path(tmp) / "events.jsonl").read_text().splitlines() if l.strip()]
+            lines = [
+                line
+                for line in (Path(tmp) / "events.jsonl").read_text().splitlines()
+                if line.strip()
+            ]
             self.assertEqual(len(lines), 2)
 
     def test_all_emitted_events_present_in_file(self):
@@ -58,7 +74,11 @@ class TestFileEventEmitter(SimpleTestCase):
             e = self._emitter(tmp)
             e.emit(EVENT_A)
             e.emit(EVENT_B)
-            tables = [json.loads(l)["table"] for l in (Path(tmp) / "events.jsonl").read_text().splitlines() if l.strip()]
+            tables = [
+                json.loads(line)["table"]
+                for line in (Path(tmp) / "events.jsonl").read_text().splitlines()
+                if line.strip()
+            ]
             self.assertIn("cases", tables)
             self.assertIn("customers", tables)
 

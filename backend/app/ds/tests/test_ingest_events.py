@@ -74,12 +74,27 @@ class FakeSearchIndex:
 
 def _customer(i: int, ts: str = TS1) -> Customer:
     raw = {"id": i, "name": f"C{i}", "email": f"c{i}@x.com", "updated_at": ts}
-    return Customer(id=i, name=raw["name"], email=raw["email"], updated_at=ts, raw=raw)
+    return Customer(id=i, name=f"C{i}", email=f"c{i}@x.com", updated_at=ts, raw=raw)
 
 
 def _case(i: int, ts: str = TS1) -> Case:
-    raw = {"id": i, "customer_id": 1, "title": f"Case {i}", "description": "", "status": "open", "updated_at": ts}
-    return Case(id=i, customer_id=1, title=raw["title"], description="", status="open", updated_at=ts, raw=raw)
+    raw = {
+        "id": i,
+        "customer_id": 1,
+        "title": f"Case {i}",
+        "description": "",
+        "status": "open",
+        "updated_at": ts,
+    }
+    return Case(
+        id=i,
+        customer_id=1,
+        title=f"Case {i}",
+        description="",
+        status="open",
+        updated_at=ts,
+        raw=raw,
+    )
 
 
 def _make_uc(customers=None, cases=None, emitter=None):
@@ -117,7 +132,14 @@ class TestDeltaEvents(SimpleTestCase):
         uc, ee = _make_uc(customers=[_customer(1)], cases=[_case(10)])
         uc.execute(dry_run=False)
         for event in ee.events:
-            for field in ("table", "run_id", "schema_fingerprint", "delta_row_count", "lake_paths", "checkpoint_after"):
+            for field in (
+                "table",
+                "run_id",
+                "schema_fingerprint",
+                "delta_row_count",
+                "lake_paths",
+                "checkpoint_after",
+            ):
                 self.assertIn(field, event, f"Missing field '{field}' in event")
 
     def test_event_run_id_matches_manifest(self):

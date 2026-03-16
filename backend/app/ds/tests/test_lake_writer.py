@@ -33,7 +33,7 @@ class TestLakeWriterEmptyRows(SimpleTestCase):
 class TestLakeWriterOutput(SimpleTestCase):
     _ROWS = [
         {"id": 1, "title": "Alpha", "status": "open"},
-        {"id": 2, "title": "Beta",  "status": "closed"},
+        {"id": 2, "title": "Beta", "status": "closed"},
     ]
 
     def _write(self, table: str = "cases") -> tuple[LakeWriter, Path, list[str]]:
@@ -78,7 +78,7 @@ class TestLakeWriterOutput(SimpleTestCase):
     def test_file_has_correct_line_count(self):
         _, lake_dir, paths = self._write()
         out = lake_dir.parent / paths[0]
-        lines = [l for l in out.read_text().splitlines() if l.strip()]
+        lines = [line for line in out.read_text().splitlines() if line.strip()]
         self.assertEqual(len(lines), len(self._ROWS))
 
     def test_each_line_is_valid_json(self):
@@ -92,7 +92,7 @@ class TestLakeWriterOutput(SimpleTestCase):
     def test_row_content_round_trips(self):
         _, lake_dir, paths = self._write()
         out = lake_dir.parent / paths[0]
-        written = [json.loads(l) for l in out.read_text().splitlines() if l.strip()]
+        written = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
         self.assertEqual(written[0]["id"], 1)
         self.assertEqual(written[1]["title"], "Beta")
 
@@ -109,7 +109,7 @@ class TestLakeWriterIdempotency(SimpleTestCase):
 
             paths = lw.write("cases", rows)
             out = lake_dir.parent / paths[0]
-            lines = [l for l in out.read_text().splitlines() if l.strip()]
+            lines = [line for line in out.read_text().splitlines() if line.strip()]
             # Must still be 1 line, not 3
             self.assertEqual(len(lines), 1)
 

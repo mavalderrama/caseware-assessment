@@ -11,7 +11,7 @@ class DjangoCustomerRepository:
         from ...infrastructure.models import Customer as CustomerModel
 
         cursor_dt = datetime.fromisoformat(since)
-        qs = CustomerModel.objects.filter(updated_at__gt=cursor_dt).order_by("updated_at")
+        qs = CustomerModel.objects.filter(updated_at__gt=cursor_dt).order_by("updated_at")  # type: ignore[attr-defined]
         results: list[Customer] = []
         for obj in qs:
             raw = {
